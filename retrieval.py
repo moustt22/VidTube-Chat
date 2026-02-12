@@ -29,51 +29,44 @@ def answer_query(query, video_id, k=3):
         embedding_function=embeddings
     )
 
-    if chat_history[video_id]:
-        rewrite_messages = [
-            SystemMessage(content="Given the chat history, rewrite the new question to be standalone and searchable. Just return the rewritten question."),
-        ] + chat_history[video_id] + [
-            HumanMessage(content=f"New question: {query}")
-        ]
-        model_rewrite = ChatOpenAI(
-            model="gpt-4o",
-            openai_api_key=OPENROUTER_API_KEY,
-            base_url="https://openrouter.ai/api/v1",
-            max_tokens=500
-        )
-        rewritten = model_rewrite.invoke(rewrite_messages).content.strip()
-        search_query = rewritten
-    else:
-        search_query = query
+    docs = vectordb.similarity_search(query, k=k)
 
-    docs = vectordb.similarity_search(search_query, k=k)
     if not docs:
         return "No relevant documents found to answer your query."
 
-    combined_context = "\n".join([f"- {doc.page_content}" for doc in docs])
-    prompt = f"""Based on the following documents(they are captions of a video) and chat history, please answer this question: {query}
+    combined_context = "\n".join(
+        [f"- {doc.page_content[:500]}" for doc in docs] 
+    )
+
+    prompt = f"""Based on the following video captions(they are captions of a youtube video) and chat history, please answer this question: {query}
 
 Documents:
 {combined_context}
 
-Please provide a clear, helpful answer using only the information from these documents and chat history.
-If you can't find the answer in the documents, say "I don't have enough information to answer that question based on the provided documents."
+Please provide a clear, helpful answer using only the information from these captions and chat history.
+If you can't find the answer in the captions, say "I don't have enough information to answer that question based on the provided documents."
 """
 
-    model_answer = ChatOpenAI(
-        model="gpt-4o",
+    model = ChatOpenAI(
+        model="meta-llama/llama-3-8b-instruct",
         openai_api_key=OPENROUTER_API_KEY,
         base_url="https://openrouter.ai/api/v1",
-        max_tokens=1000
+        max_tokens=250,
+        temperature=0
     )
 
+    limited_history = chat_history[video_id]
+
     messages = [
-        SystemMessage(content="You are a helpful assistant that remembers previous questions and answers."),
-    ] + chat_history[video_id] + [
+        SystemMessage(content="You answer questions based only on provided captions."),
+    ] + limited_history + [
         HumanMessage(content=prompt)
     ]
 
-    answer = model_answer.invoke(messages).content
+    response = model.invoke(messages)
+    answer = response.content
+
     chat_history[video_id].append(HumanMessage(content=query))
     chat_history[video_id].append(AIMessage(content=answer))
+
     return answer, docs
