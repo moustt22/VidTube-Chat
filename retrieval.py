@@ -51,7 +51,7 @@ def answer_query(query, video_id, k=3):
         return "No relevant documents found to answer your query."
 
     combined_context = "\n".join([f"- {doc.page_content}" for doc in docs])
-    prompt = f"""Based on the following documents and chat history, please answer this question: {query}
+    prompt = f"""Based on the following documents(they are captions of a video) and chat history, please answer this question: {query}
 
 Documents:
 {combined_context}
